@@ -1,0 +1,14 @@
+{
+    "configurations": [
+        {
+            "type": "python",
+            "request": "launch",
+            "name": "Run FastAPI with Uvicorn",
+            "module": "uvicorn",
+            "args": [
+                "app.main:app",
+                "--reload"
+            ]
+        }
+    ]
+}
