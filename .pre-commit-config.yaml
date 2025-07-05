@@ -1,0 +1,34 @@
+repos:
+  - repo: https://github.com/psf/black
+    rev: 24.3.0
+    hooks:
+      - id: black
+        language_version: python3.12
+
+  - repo: https://github.com/pre-commit/mirrors-isort
+    rev: v5.10.1
+    hooks:
+      - id: isort
+        language_version: python3.12
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.9.0
+    hooks:
+      - id: mypy
+        language_version: python3.12
+        additional_dependencies: ["sqlalchemy", "fastapi", "pydantic"]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      # - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-yaml
+      - id: check-added-large-files
+      - id: name-tests-test
+
+  # - repo: https://github.com/pre-commit/pygrep-hooks
+  #   rev: v1.10.1
+  #   hooks:
+  #     - id: no-commit-to-branch
+  #       args: [--branch, main]
