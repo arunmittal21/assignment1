@@ -1,3 +1,4 @@
+import logging
 from typing import AsyncGenerator
 
 from sqlalchemy import create_engine, event
@@ -7,6 +8,9 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from app.core import app_settings
+
+logger = logging.getLogger(__name__)
+
 
 # DATABASE_URL = "sqlite:///./local_db/blood_donation.db"
 # engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
@@ -23,7 +27,7 @@ DATABASE_URL = (
     app_settings.database_url
 )  # "sqlite+aiosqlite:///./local_db/blood_donation.db"
 
-engine = create_async_engine(DATABASE_URL, echo=True, future=True)
+# engine = create_async_engine(DATABASE_URL, echo=True, future=True)
 engine = create_async_engine(
     DATABASE_URL,
     connect_args={"check_same_thread": False, "timeout": 30, "uri": True},
@@ -37,8 +41,15 @@ Base = declarative_base()
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    async with asyncSessionLocal() as session:
-        yield session
+    logger.debug("Creating DB session")
+    try:
+        async with asyncSessionLocal() as session:
+            yield session
+    except Exception as e:
+        logger.exception("Error in DB session generator")
+        raise
+    finally:
+        logger.debug("DB session closed")
 
 
 @event.listens_for(Engine, "connect")

@@ -1,3 +1,5 @@
+from app.service.health_service import db_health_check
+
 from .donor_service import (
     create_donation,
     create_donor,
