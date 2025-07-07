@@ -9,6 +9,18 @@
                 "app.main:app",
                 "--reload"
             ]
+        },
+        {
+            "name": "Python: Debug All Tests (pytest)",
+            "type": "python",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests"
+            ],
+            "justMyCode": false,
+            "console": "integratedTerminal"
         }
+
     ]
 }
