@@ -14,13 +14,13 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.v1.routes.donor_routes import router as donor_router
 from app.api.v1.routes.health_route import router as health_router
-from app.core.coorelation import CorrelationIdMiddleware
 from app.core.exception_handler import (
     global_exception_handler,
     http_exception_handler,
     validation_exception_handler,
 )
 from app.core.otel_setup import configure_otel
+from app.core.request_coorelation import CorrelationIdMiddleware
 from app.db.session import engine
 
 try:

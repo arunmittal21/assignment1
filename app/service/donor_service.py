@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 async def create_donor(db: AsyncSession, donor_in: DonorCreate) -> Donor:
     logger.info(f"Creating donor: {donor_in.name}")
     try:
-        donor = Donor(**donor_in.dict())
+        donor = Donor(**donor_in.model_dump())
         db.add(donor)
         await db.commit()
         await db.refresh(donor)
@@ -60,7 +60,7 @@ async def update_donor(db: AsyncSession, donor_id: int, donor_in: DonorCreate):
             logger.warning(f"Donor with ID {donor_id} not found for update")
             raise HTTPException(status_code=404, detail="Donor not found")
 
-        for key, value in donor_in.dict().items():
+        for key, value in donor_in.model_dump().items():
             setattr(donor, key, value)
         await db.commit()
         await db.refresh(donor)
@@ -97,7 +97,11 @@ async def delete_donor(db: AsyncSession, donor_id: int):
 async def create_donation(db: AsyncSession, donor_id: int, donation_in: DonationCreate):
     logger.info(f"Creating donation for donor ID: {donor_id}")
     try:
-        donation = Donation(**donation_in.dict(), donor_id=donor_id)
+
+        data = donation_in.model_dump()
+        data.pop("donor_id", None)
+        donation = Donation(**data, donor_id=donor_id)
+        # donation = Donation(**donation_in.model_dump(), donor_id=donor_id)
         db.add(donation)
         await db.commit()
         await db.refresh(donation)
