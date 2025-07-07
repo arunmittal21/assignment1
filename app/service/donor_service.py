@@ -60,8 +60,21 @@ async def update_donor(db: AsyncSession, donor_id: int, donor_in: DonorUpdate):
     logger.info(f"Updating donor ID: {donor_id}")
     try:
         donor = await get_donor(db, donor_id, True)
-        for key, value in donor_in.model_dump().items():
-            setattr(donor, key, value)
+        # Optimistic locking check
+        if donor_in.updated_at != donor.updated_at:  # type: ignore
+            logger.warning(
+                f"Optimistic lock failed for donor {donor_id}: "
+                f"client updated_at={donor_in.updated_at}, db updated_at={donor.updated_at}"  # type: ignore
+            )
+            raise HTTPException(
+                status_code=409,
+                detail="Donor was updated by another process. Please refresh and try again.",
+            )
+
+        # Update all fields except 'updated_at'
+        for key, value in donor_in.model_dump(exclude={"updated_at"}).items():
+            if value is not None:
+                setattr(donor, key, value)
         await db.commit()
         await db.refresh(donor)
         logger.debug(f"Updated donor ID: {donor_id}")
@@ -75,7 +88,7 @@ async def delete_donor(db: AsyncSession, donor_id: int):
     logger.info(f"Deleting donor ID: {donor_id}")
     try:
         donor = await get_donor(db, donor_id, True)
-        if donor.donations:  # type: ignore
+        if await get_donations_for_donor(db, donor_id):
             logger.warning(f"Cannot delete donor ID {donor_id}: has donations")
             raise HTTPException(
                 status_code=400, detail="Cannot delete donor with existing donations"
@@ -96,6 +109,17 @@ async def get_total_donor_count(db: AsyncSession) -> int:
 
 
 # ========== DONATION  ==========
+
+
+async def get_donations_for_donor(db: AsyncSession, donor_id: int):
+    logger.info(f"Fetching donations for donor ID: {donor_id}")
+    try:
+        result = await db.execute(select(Donation).where(Donation.donor_id == donor_id))
+        donations = result.scalars().all()
+        return donations
+    except Exception:
+        logger.exception(f"Failed to fetch donations for donor ID: {donor_id}")
+        raise
 
 
 async def create_donation(db: AsyncSession, donor_id: int, donation_in: DonationCreate):
@@ -136,8 +160,19 @@ async def update_donation(
     logger.info(f"Updating donation ID: {donation_id}")
     try:
         donation = await get_donation(db, donation_id, True)
-        for key, value in donation_in.model_dump().items():
-            setattr(donation, key, value)
+        # Optimistic locking check
+        if donation_in.updated_at != donation.updated_at:  # type: ignore
+            logger.warning(
+                f"Optimistic lock failed for donation {donation_id}: "
+                f"client updated_at={donation_in.updated_at}, db updated_at={donation.updated_at}"  # type: ignore
+            )
+            raise HTTPException(
+                status_code=409,
+                detail="Donation was updated by another process. Please refresh and try again.",
+            )
+        for key, value in donation_in.model_dump(exclude={"updated_at"}).items():
+            if value is not None:
+                setattr(donation, key, value)
         await db.commit()
         await db.refresh(donation)
         logger.debug(f"Updated donation ID: {donation_id}")

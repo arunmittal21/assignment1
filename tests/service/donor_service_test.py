@@ -131,21 +131,63 @@ async def test_get_donor_exception(mocker):
 @pytest.mark.asyncio
 async def test_update_donor_success(mocker):
     db = mocker.AsyncMock()
-    donor_obj = Donor(id=1, name="A", blood_group="A+", age=25)
+    old_updated_at = datetime.datetime(2024, 7, 7, 18, 0, 0)
+    donor_obj = Donor(
+        id=1,
+        name="Alice",
+        blood_group="A+",
+        age=25,
+        last_donated=None,
+        updated_at=old_updated_at,
+    )
     donor_data = DonorUpdate(
         name="Bob",
         blood_group="O+",
         age=40,
         last_donated=None,
-        updated_at=datetime.datetime.utcnow(),
+        updated_at=old_updated_at,
     )
     mocker.patch("app.service.donor_service.get_donor", return_value=donor_obj)
     db.commit = mocker.AsyncMock()
     db.refresh = mocker.AsyncMock()
     donor = await update_donor(db, 1, donor_data)
     assert donor.name == "Bob"  # type: ignore
+    assert donor.blood_group == "O+"  # type: ignore
+    assert donor.age == 40  # type: ignore
     db.commit.assert_called()
     db.refresh.assert_called_with(donor_obj)
+
+
+@pytest.mark.asyncio
+async def test_update_donor_optimistic_lock_fail(mocker):
+    db = mocker.AsyncMock()
+    db_updated_at = datetime.datetime(2024, 7, 7, 18, 0, 0)
+    donor_obj = Donor(
+        id=1,
+        name="Alice",
+        blood_group="A+",
+        age=25,
+        last_donated=None,
+        updated_at=db_updated_at,
+    )
+    # Client provides a different (stale) updated_at
+    stale_updated_at = datetime.datetime(2024, 7, 7, 17, 0, 0)
+    donor_data = DonorUpdate(
+        name="Bob",
+        blood_group="O+",
+        age=40,
+        last_donated=None,
+        updated_at=stale_updated_at,  # different from DB!
+    )
+    mocker.patch("app.service.donor_service.get_donor", return_value=donor_obj)
+    db.commit = mocker.AsyncMock()
+    db.refresh = mocker.AsyncMock()
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc:
+        await update_donor(db, 1, donor_data)
+    assert exc.value.status_code == 409
+    assert "updated by another process" in exc.value.detail
 
 
 @pytest.mark.asyncio
@@ -164,7 +206,7 @@ async def test_update_donor_exception(mocker):
 
 
 @pytest.mark.asyncio
-async def test_delete_donor_no_donations(mocker):
+async def test_delete_donor_no_donations(mocker: MockerFixture):
     db = mocker.AsyncMock()
     donor = Donor(id=1, name="A", blood_group="A+", age=25)
     donor.donations = []
@@ -173,6 +215,11 @@ async def test_delete_donor_no_donations(mocker):
     db.execute.return_value = result
     db.delete = mocker.AsyncMock()
     db.commit = mocker.AsyncMock()
+
+    mocker.patch(
+        "app.service.donor_service.get_donations_for_donor", return_value=False
+    )
+
     resp = await delete_donor(db, 1)
     assert resp == {"detail": "Donor deleted successfully"}
     db.delete.assert_called_with(donor)
@@ -180,26 +227,45 @@ async def test_delete_donor_no_donations(mocker):
 
 
 @pytest.mark.asyncio
-async def test_delete_donor_with_donations(mocker):
+async def test_delete_donor_with_donations(mocker: MockerFixture):
     db = mocker.AsyncMock()
     donor = Donor(id=1, name="A", blood_group="A+", age=25)
-    donor.donations = [
-        Donation(
-            id=1,
-            donor_id=1,
-            date=datetime.date.today(),
-            volume_ml=500,
-            location="Test",
-            updated_at=datetime.datetime.utcnow(),
-        )
-    ]
+    donor.donations = []
     result = mocker.MagicMock()
     result.scalar_one_or_none.return_value = donor
     db.execute.return_value = result
+    db.delete = mocker.AsyncMock()
+    db.commit = mocker.AsyncMock()
+
+    mocker.patch("app.service.donor_service.get_donations_for_donor", return_value=True)
+
     with pytest.raises(HTTPException) as exc:
         await delete_donor(db, 1)
     assert exc.value.status_code == 400
     assert "Cannot delete donor with existing donations" in exc.value.detail
+
+
+# @pytest.mark.asyncio
+# async def test_delete_donor_with_donations1(mocker):
+#     db = mocker.AsyncMock()
+#     donor = Donor(id=1, name="A", blood_group="A+", age=25)
+#     donor.donations = [
+#         Donation(
+#             id=1,
+#             donor_id=1,
+#             date=datetime.date.today(),
+#             volume_ml=500,
+#             location="Test",
+#             updated_at=datetime.datetime.utcnow(),
+#         )
+#     ]
+#     result = mocker.MagicMock()
+#     result.scalar_one_or_none.return_value = donor
+#     db.execute.return_value = result
+#     with pytest.raises(HTTPException) as exc:
+#         await delete_donor(db, 1)
+#     assert exc.value.status_code == 400
+#     assert "Cannot delete donor with existing donations" in exc.value.detail
 
 
 @pytest.mark.asyncio
@@ -312,14 +378,62 @@ async def test_get_donation_not_found_silent(mocker):
 @pytest.mark.asyncio
 async def test_update_donation_success(mocker):
     db = mocker.AsyncMock()
-    donation_obj = Donation(
+    # Simulate the DB donation object with a different updated_at than provided
+    db_donation = Donation(
         id=1,
         donor_id=1,
         date=datetime.date.today(),
-        volume_ml=500,
-        location="A",
-        updated_at=datetime.datetime.utcnow(),
+        volume_ml=400,
+        location="Bombay",
+        hemoglobin=14.5,
+        pulse=72,
+        blood_pressure="110/80",
+        updated_at=datetime.datetime(2024, 7, 7, 18, 0, 0),
     )
+
+    # Patch get_donation to return the above object
+    mocker.patch("app.service.donor_service.get_donation", return_value=db_donation)
+
+    # The client provides a different updated_at (simulating a stale update)
+    donation_obj = DonationUpdate(
+        date=datetime.date.today(),
+        volume_ml=500,
+        location="Delhi",
+        donor_id=1,
+        hemoglobin=14.5,
+        pulse=72,
+        blood_pressure="110/80",
+        updated_at=datetime.datetime(2024, 7, 7, 18, 0, 0),
+    )
+
+    db.commit = mocker.AsyncMock()
+    db.refresh = mocker.AsyncMock()
+    updated = await update_donation(db, 1, donation_obj)
+    assert updated.location == "Delhi"  # type: ignore
+    db.commit.assert_called()
+    db.refresh.assert_called_with(db_donation)
+
+
+@pytest.mark.asyncio
+async def test_update_donation_optimistic_lock(mocker):
+    db = mocker.AsyncMock()
+    # Simulate the DB donation object with a different updated_at than provided
+    db_donation = Donation(
+        id=1,
+        donor_id=1,
+        date=datetime.date.today(),
+        volume_ml=400,
+        location="Bombay",
+        hemoglobin=14.5,
+        pulse=72,
+        blood_pressure="110/80",
+        updated_at=datetime.datetime(2024, 7, 7, 18, 0, 0),  # Old timestamp
+    )
+
+    # Patch get_donation to return the above object
+    mocker.patch("app.service.donor_service.get_donation", return_value=db_donation)
+
+    # The client provides a different updated_at (simulating a stale update)
     donation_in = DonationUpdate(
         date=datetime.date.today(),
         volume_ml=400,
@@ -328,15 +442,13 @@ async def test_update_donation_success(mocker):
         hemoglobin=14.5,
         pulse=72,
         blood_pressure="110/80",
-        updated_at=datetime.datetime.utcnow(),
+        updated_at=datetime.datetime(2024, 7, 7, 19, 0, 0),  # Newer timestamp
     )
-    mocker.patch("app.service.donor_service.get_donation", return_value=donation_obj)
-    db.commit = mocker.AsyncMock()
-    db.refresh = mocker.AsyncMock()
-    updated = await update_donation(db, 1, donation_in)
-    assert updated.location == "Bombay"  # type: ignore
-    db.commit.assert_called()
-    db.refresh.assert_called_with(donation_obj)
+
+    with pytest.raises(HTTPException) as exc:
+        await update_donation(db, 1, donation_in)
+    assert exc.value.status_code == 409
+    assert "updated by another process" in exc.value.detail
 
 
 @pytest.mark.asyncio
