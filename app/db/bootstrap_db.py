@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import os
+import sys
 from datetime import date
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,6 +48,7 @@ async def seed_data():
 
 if __name__ == "__main__":
     try:
+        sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
         asyncio.run(init_db())
         asyncio.run(seed_data())
         logger.info("Database initialized and seeded.")

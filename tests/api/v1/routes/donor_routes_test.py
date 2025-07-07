@@ -36,7 +36,7 @@ def sample_donation(
 @pytest.mark.anyio
 async def test_create_and_list_donors(client):
     donor_resp = await client.post("/api/v1/donors", json=sample_donor())
-    assert donor_resp.status_code == 200
+    assert donor_resp.status_code == 201
     donor = donor_resp.json()
     assert donor["name"] == "Test Donor"
     assert donor["blood_group"] == "A+"
@@ -46,7 +46,9 @@ async def test_create_and_list_donors(client):
     assert resp.status_code == 200
     donors = resp.json()
     # assert len(donors) == 1
-    assert any(d["id"] == donor["id"] and d["name"] == "Test Donor" for d in donors)
+    assert any(
+        d["id"] == donor["id"] and d["name"] == "Test Donor" for d in donors["items"]
+    )
 
 
 @pytest.mark.anyio
@@ -82,7 +84,7 @@ async def test_create_donation_for_donor(client):
     donor_id = donor_resp.json()["id"]
     donation_data = sample_donation(donor_id)
     resp = await client.post(f"/api/v1/donors/{donor_id}/donations", json=donation_data)
-    assert resp.status_code == 200
+    assert resp.status_code == 201
     donation = resp.json()
     assert donation["donor_id"] == donor_id
     assert donation["volume_ml"] == 500
@@ -117,15 +119,3 @@ async def test_create_donation_invalid_pulse(client):
     resp = await client.post(f"/api/v1/donors/{donor_id}/donations", json=donation_data)
     assert resp.status_code == 422
     assert "Pulse must be between 60 and 200" in str(resp.json())
-
-
-@pytest.mark.skip(reason="Update and delete not implemented in routes")
-async def test_update_donor(client):
-    # To be implemented when update endpoint is available
-    pass
-
-
-@pytest.mark.skip(reason="Update and delete not implemented in routes")
-async def test_delete_donor(client):
-    # To be implemented when delete endpoint is available
-    pass

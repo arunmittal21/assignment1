@@ -9,11 +9,11 @@ VALID_BLOOD_GROUPS = {"A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"}
 
 
 class DonorBase(BaseModel):
-    name: str = Field(..., min_length=1, max_length=100)
+    name: str = Field(..., min_length=1, max_length=300)
     blood_group: str = Field(
         ..., description="Blood group must be one of the standard types"
     )
-    age: int = Field(..., ge=18, le=65)
+    age: int = Field(..., ge=18, le=70)
     last_donated: Optional[date] = None
 
     @field_validator("blood_group")
@@ -28,8 +28,13 @@ class DonorCreate(DonorBase):
     pass
 
 
+class DonorUpdate(DonorBase):
+    updated_at: datetime.datetime
+
+
 class DonorOut(DonorBase):
     id: int
+    updated_at: datetime.datetime
 
     class Config:
         orm_mode = True
@@ -89,8 +94,13 @@ class DonationCreate(DonationBase):
     pass
 
 
+class DonationUpdate(DonationBase):
+    updated_at: datetime.datetime
+
+
 class DonationOut(DonationBase):
     id: int
+    updated_at: datetime.datetime
 
     class Config:
         orm_mode = True
